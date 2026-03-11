@@ -52,3 +52,20 @@ The entrypoint is:
 - `frontend/src/App.jsx` – renders the `SourceWise` UI from `frontend/sourcewise-ro.jsx`
 
 Make sure the FastAPI backend is running on `http://127.0.0.1:8000` (or update `API_BASE` in `frontend/sourcewise-ro.jsx` if you change the port/host).
+
+## AI Copilot (single-prompt workflows)
+
+The UI includes an **AI Copilot** tab (🤖) that can run search/compare/consolidate/cost-calculation from a single prompt.
+
+Backend endpoint:
+
+- `POST /chat`
+
+Example prompt:
+
+- `Caută casti wireless, compară top 3, consolidează și calculează cost pentru qty 500 cu LCL`
+
+Notes:
+
+- Current implementation is **rule-based** (works without any AI keys).
+- Later we can plug a real LLM in the backend while keeping the same `/chat` contract.

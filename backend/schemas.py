@@ -1,4 +1,4 @@
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -75,4 +75,21 @@ class ConsolidationPlan(BaseModel):
     sea_freight_cost: float
     savings_vs_air: float
     per_product_costs: List[PerProductCost]
+
+
+class ChatRequest(BaseModel):
+    prompt: str
+    platform: Literal["all", "alibaba", "aliexpress"] = "all"
+
+
+class ChatResponse(BaseModel):
+    message: str
+    # Optional structured outputs (frontend can apply these to state)
+    search_results: List[ProductOut] = []
+    compared: List[ProductOut] = []
+    cart: List[CartItem] = []
+    consolidation_plan: Optional[ConsolidationPlan] = None
+    landed_cost: Optional[LandedCostBreakdown] = None
+    landed_cost_product: Optional[ProductOut] = None
+    transport_method: Optional[TransportMethod] = None
 

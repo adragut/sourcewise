@@ -87,6 +87,11 @@ export default function SourceWise() {
   const [consMode, setConsMode] = useState("multi_supplier");
   const [plan, setPlan] = useState(null);
   const [planLoading, setPlanLoading] = useState(false);
+  const [chatMessages, setChatMessages] = useState([
+    { role: "assistant", content: "Spune-mi într-un singur mesaj ce vrei: căutare, comparație, consolidare și/sau calcul cost." },
+  ]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
 
   const doSearch = async () => {
     if (!query.trim()) return;
@@ -113,6 +118,93 @@ export default function SourceWise() {
     } finally {
       setLoading(false);
       setSearched(true);
+    }
+  };
+
+  const applyChatResponse = (data) => {
+    // Search results
+    if (Array.isArray(data.search_results)) {
+      const mapped = data.search_results.map((p) => ({
+        ...p,
+        priceEUR: p.price_eur,
+        leadDays: p.lead_days,
+      }));
+      setResults(mapped);
+      setSearched(true);
+    }
+
+    // Compared
+    if (Array.isArray(data.compared)) {
+      const mapped = data.compared.map((p) => ({
+        ...p,
+        priceEUR: p.price_eur,
+        leadDays: p.lead_days,
+      }));
+      setCompared(mapped);
+    }
+
+    // Cart (needs product objects)
+    if (Array.isArray(data.cart) && Array.isArray(data.search_results)) {
+      const productsById = new Map(data.search_results.map((p) => [p.id, p]));
+      const cartProducts = data.cart
+        .map((it) => productsById.get(it.product_id))
+        .filter(Boolean)
+        .map((p) => ({ ...p, priceEUR: p.price_eur, leadDays: p.lead_days }));
+      setCart(cartProducts);
+      const qtys = {};
+      data.cart.forEach((it) => {
+        qtys[it.product_id] = it.quantity;
+      });
+      setCartQtys(qtys);
+    }
+
+    // Consolidation plan
+    if (data.consolidation_plan) {
+      setPlan(data.consolidation_plan);
+    }
+
+    // Landed cost
+    if (data.landed_cost_product && data.landed_cost) {
+      const p = data.landed_cost_product;
+      const mappedP = { ...p, priceEUR: p.price_eur, leadDays: p.lead_days };
+      setLcProduct(mappedP);
+      setLcData(data.landed_cost);
+      if (data.transport_method) setLcMethod(data.transport_method);
+      // Best-effort: infer qty from total/unit if we can
+      if (data.landed_cost.total && data.landed_cost.unit) {
+        const qty = Math.max(1, Math.round(data.landed_cost.total / data.landed_cost.unit));
+        setLcQty(qty);
+      }
+    }
+  };
+
+  const sendChat = async () => {
+    const text = chatInput.trim();
+    if (!text || chatLoading) return;
+    setChatInput("");
+    setChatMessages((m) => [...m, { role: "user", content: text }]);
+    setChatLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: text, platform: filterPlatform }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail || "chat_failed");
+      setChatMessages((m) => [...m, { role: "assistant", content: data.message || "OK" }]);
+      applyChatResponse(data);
+
+      // Navigate to most relevant tab based on response
+      if (data.landed_cost) setTab(3);
+      else if (data.consolidation_plan || (data.cart && data.cart.length)) setTab(2);
+      else if (data.compared && data.compared.length) setTab(1);
+      else if (data.search_results && data.search_results.length) setTab(0);
+    } catch (e) {
+      console.error("Chat error", e);
+      setChatMessages((m) => [...m, { role: "assistant", content: "Nu am putut procesa cererea. Încearcă din nou." }]);
+    } finally {
+      setChatLoading(false);
     }
   };
 
@@ -205,6 +297,7 @@ export default function SourceWise() {
     { label:"Compară Furnizori", icon:"⚖️", badge: compared.length },
     { label:"Consolidare", icon:"📦", badge: cart.length },
     { label:"Calculator Cost", icon:"🧮" },
+    { label:"AI Copilot", icon:"🤖" },
   ];
 
   const suggestions = ["casti wireless","huse telefon","becuri led","laptop","tricouri"];
@@ -743,6 +836,75 @@ export default function SourceWise() {
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ═══ TAB 4: AI COPILOT ════════════════════════════════════════ */}
+          {tab === 4 && (
+            <div className="fade">
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 360px", gap:18, alignItems:"start" }}>
+                <Card>
+                  <Section title="Chat" />
+                  <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                    <div style={{ height:420, overflowY:"auto", border:"1px solid #e5e7eb", borderRadius:10, padding:12, background:"#fff" }}>
+                      {chatMessages.map((m, idx) => (
+                        <div key={idx} style={{ display:"flex", justifyContent:m.role==="user"?"flex-end":"flex-start", marginBottom:10 }}>
+                          <div style={{
+                            maxWidth:"78%",
+                            padding:"10px 12px",
+                            borderRadius:12,
+                            fontSize:13,
+                            lineHeight:1.45,
+                            background: m.role==="user" ? "#2563eb" : "#f1f5f9",
+                            color: m.role==="user" ? "#fff" : "#0f172a",
+                            border: m.role==="user" ? "1px solid #1d4ed8" : "1px solid #e5e7eb",
+                            whiteSpace:"pre-wrap",
+                          }}>
+                            {m.content}
+                          </div>
+                        </div>
+                      ))}
+                      {chatLoading && (
+                        <div style={{ fontSize:12, color:"#64748b" }}>Se procesează…</div>
+                      )}
+                    </div>
+                    <div style={{ display:"flex", gap:10 }}>
+                      <input
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onKeyDown={(e) => e.key==="Enter" && sendChat()}
+                        placeholder='Ex: "Caută casti wireless, compară top 3, consolidează și calculează cost pentru 500 buc LCL"'
+                        style={{ flex:1, padding:"10px 12px", fontSize:13, border:"1px solid #d1d5db", borderRadius:9 }}
+                      />
+                      <button className="btn-pri" onClick={sendChat} disabled={chatLoading} style={{ padding:"10px 14px", fontSize:13, opacity:chatLoading?0.7:1 }}>
+                        Trimite
+                      </button>
+                    </div>
+                  </div>
+                </Card>
+
+                <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                  <Card>
+                    <Section title="Scurtături" />
+                    <div style={{ display:"flex", flexDirection:"column", gap:8, fontSize:12, color:"#334155", lineHeight:1.6 }}>
+                      <div><strong>• Căutare:</strong> „caută casti wireless pe alibaba”</div>
+                      <div><strong>• Comparație:</strong> „compară top 3”</div>
+                      <div><strong>• Consolidare:</strong> „consolidare pentru 2 produse, qty 500”</div>
+                      <div><strong>• Cost:</strong> „calculează cost landed 500 buc LCL”</div>
+                    </div>
+                  </Card>
+
+                  <Card style={{ background:"#eff6ff", borderColor:"#bfdbfe" }}>
+                    <Section title="Rezultate aplicate" />
+                    <div style={{ fontSize:12, color:"#1e40af", lineHeight:1.7 }}>
+                      <div>Rezultate căutare: <strong>{results.length}</strong></div>
+                      <div>Comparate: <strong>{compared.length}</strong></div>
+                      <div>În consolidare: <strong>{cart.length}</strong></div>
+                      <div>Calculator: <strong>{lcProduct ? "selectat" : "—"}</strong></div>
+                    </div>
+                  </Card>
+                </div>
+              </div>
             </div>
           )}
         </main>

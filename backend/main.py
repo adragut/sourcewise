@@ -5,6 +5,8 @@ from .data import find_product_by_id
 from .schemas import (
     ConsolidationPlan,
     ConsolidationPlanRequest,
+    ChatRequest,
+    ChatResponse,
     LandedCostBreakdown,
     LandedCostRequest,
     ProductOut,
@@ -12,6 +14,7 @@ from .schemas import (
 )
 from .services import calc_landed_cost, suggest_consolidation
 from .providers import search_all, search_alibaba, search_aliexpress
+from .chat import run_chat
 
 app = FastAPI(title="SourceWise Backend", version="0.1.0")
 
@@ -90,6 +93,11 @@ def get_product(product_id: int) -> ProductOut:
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     return product
+
+
+@app.post("/chat", response_model=ChatResponse)
+def chat(payload: ChatRequest) -> ChatResponse:
+    return run_chat(payload)
 
 
 if __name__ == "__main__":
