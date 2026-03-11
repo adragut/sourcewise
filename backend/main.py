@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from .data import CATALOG, find_product_by_id
+from .data import find_product_by_id
 from .schemas import (
     ConsolidationPlan,
     ConsolidationPlanRequest,
@@ -11,6 +11,7 @@ from .schemas import (
     SearchResponse,
 )
 from .services import calc_landed_cost, suggest_consolidation
+from .providers import search_all, search_alibaba, search_aliexpress
 
 app = FastAPI(title="SourceWise Backend", version="0.1.0")
 
@@ -38,19 +39,15 @@ def search_products(
     if not q.strip():
         return SearchResponse(results=[])
 
-    key = None
-    q_lower = q.lower()
-    for k in CATALOG.keys():
-        if k.split(" ")[0] in q_lower:
-            key = k
-            break
-    if key is None:
-        key = "casti wireless"
+    # Dispatch to providers (currently backed by the in-memory CATALOG;
+    # later these can call real Alibaba / AliExpress APIs).
+    if platform == "alibaba":
+        results: list[ProductOut] = search_alibaba(q)
+    elif platform == "aliexpress":
+        results = search_aliexpress(q)
+    else:
+        results = search_all(q)
 
-    results: list[ProductOut] = list(CATALOG[key])
-
-    if platform != "all":
-        results = [p for p in results if p.platform == platform]
     if verified:
         results = [p for p in results if p.verified]
 
